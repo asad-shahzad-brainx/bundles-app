@@ -13,10 +13,11 @@ import {
   Form,
   InlineError,
   Banner,
+  Badge,
 } from "@shopify/polaris";
 import { useState, useCallback } from "react";
 import emptyState from "../assets/emptyState/newBundle.svg";
-import { ImageIcon } from "@shopify/polaris-icons";
+import { ImageIcon, CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { json } from "@remix-run/node";
 import { useActionData, useSubmit } from "@remix-run/react";
@@ -38,26 +39,44 @@ export async function action({ request }) {
     },
   ];
 
+  // const customBundleOptions = [];
+  // bundleComponents.map((component) => {
+  //   if (component.options.values.length === 1) return null;
+  //   component.options.map(({ name, values }) => {
+  //     const optionValue = values.map((value) => {
+  //       return {
+  //         name: value,
+  //       };
+  //     });
+  //     customBundleOptions.push({
+  //       name: `${component.title} (${name})`,
+  //       values: optionValue,
+  //       position: customBundleOptions.length + 1,
+  //     });
+  //   });
+  // });
+
+  const customBundleOptions = [];
+  bundleComponents.forEach((component) => {
+    component.options.forEach(({ name, values, selectedValues }) => {
+      console.log("selected", selectedValues, " values", values);
+      if (selectedValues.length > 1) {
+        const optionValue = selectedValues.map((value) => ({ name: value }));
+
+        customBundleOptions.push({
+          name: `${component.title} (${name})`,
+          values: optionValue,
+          position: customBundleOptions.length + 1,
+        });
+      }
+    });
+  });
+
   const bundleComponentVariants = bundleComponents.map(({ variants }) => {
     return variants.map((variant) => variant.id);
   });
 
-  const customBundleOptions = [];
-  bundleComponents.map((component) => {
-    if (component.options.values.length === 1) return null;
-    component.options.map(({ name, values }) => {
-      const optionValue = values.map((value) => {
-        return {
-          name: value,
-        };
-      });
-      customBundleOptions.push({
-        name: `${component.title} (${name})`,
-        values: optionValue,
-        position: customBundleOptions.length + 1,
-      });
-    });
-  });
+  return json({ customBundleOptions, bundleComponentVariants });
 
   const totalVariants = customBundleOptions.reduce((acc, curr) => {
     return acc * curr.values.length;
@@ -235,6 +254,8 @@ export default function NewBundle() {
   const [title, setTitle] = useState("");
   const [products, setProducts] = useState([]);
   const [errors, setErrors] = useState({});
+  const [productOptions, setProductOptions] = useState();
+
   console.log("products", products);
   const submit = useSubmit();
   const actionData = useActionData();
@@ -251,18 +272,25 @@ export default function NewBundle() {
       type: "product",
       multiple: true,
       selectionIds: products,
-      hidden: false,
-      archived: false,
-      draft: false,
-      variants: false,
+      filter: {
+        // hidden: false,
+        // archived: false,
+        // draft: false,
+        variants: false,
+      },
     });
+
+    if (!picked) {
+      return;
+    }
 
     const updatedProducts = picked.map((newProduct) => {
       const existingProduct = products.find(
         (product) => product.id === newProduct.id,
       );
+      const product = existingProduct || newProduct;
       return {
-        ...newProduct,
+        ...product,
         bundleQuantity: existingProduct ? existingProduct.bundleQuantity : 1,
       };
     });
@@ -279,6 +307,41 @@ export default function NewBundle() {
     });
     setProducts(updatedProducts);
   };
+  const handleOptionUpdate = (productId, optionId, optionValue) => {
+    setProducts((prevProducts) => {
+      return prevProducts.map((product) => {
+        if (product.id === productId) {
+          return {
+            ...product,
+            options: product.options.map((option) => {
+              if (option.id === optionId) {
+                // Initialize disabledValues if it doesn't exist
+                const updatedDisabledValues = option.disabledValues || [];
+
+                if (updatedDisabledValues.includes(optionValue)) {
+                  // If the value is already in disabledValues, enable it by removing it
+                  return {
+                    ...option,
+                    disabledValues: updatedDisabledValues.filter(
+                      (value) => value !== optionValue,
+                    ),
+                  };
+                } else {
+                  // If the value is not in disabledValues, disable it by adding it
+                  return {
+                    ...option,
+                    disabledValues: [...updatedDisabledValues, optionValue],
+                  };
+                }
+              }
+              return option;
+            }),
+          };
+        }
+        return product;
+      });
+    });
+  };
   const handleFormSubmit = useCallback(() => {
     const newErrors = {};
     if (title.length === 0) newErrors.title = "Title is required.";
@@ -288,9 +351,32 @@ export default function NewBundle() {
       return setErrors(newErrors);
     }
 
+    const updatedProducts = products.map((product) => {
+      const { options, variants } = product;
+
+      const updatedOptions = options.map((option) => {
+        const selectedValues = option.values.filter(
+          (value) => !option.disabledValues?.includes(value),
+        );
+        return {
+          ...option,
+          selectedValues,
+        };
+      });
+
+      const updatedVariants = variants.map((variant) => {});
+
+      return {
+        ...product,
+        options: updatedOptions,
+      };
+    });
+
+    console.log("updated products", updatedProducts);
+
     const formData = new FormData();
     formData.set("title", title);
-    formData.set("products", JSON.stringify(products));
+    formData.set("products", JSON.stringify(updatedProducts));
     submit(formData, { method: "POST" });
   }, [title, products]);
 
@@ -351,6 +437,7 @@ export default function NewBundle() {
                       <ProductList
                         products={products}
                         handleQuantityUpdate={handleQuantityUpdate}
+                        handleOptionUpdate={handleOptionUpdate}
                       />
                     </BlockStack>
                   ) : (
@@ -377,7 +464,7 @@ export default function NewBundle() {
   );
 }
 
-function ProductList({ products, handleQuantityUpdate }) {
+function ProductList({ products, handleQuantityUpdate, handleOptionUpdate }) {
   return (
     <>
       {products.map((product) => (
@@ -385,19 +472,25 @@ function ProductList({ products, handleQuantityUpdate }) {
           key={product.id}
           product={product}
           handleQuantityUpdate={handleQuantityUpdate}
+          handleOptionUpdate={handleOptionUpdate}
         />
       ))}
     </>
   );
 }
 
-function ProductListRow({ product, handleQuantityUpdate }) {
+function ProductListRow({ product, handleQuantityUpdate, handleOptionUpdate }) {
   const [quantity, setQuantity] = useState(product.bundleQuantity);
   const handleQuantity = useCallback((value) => {
     const newQuantity = value;
     setQuantity(newQuantity);
     handleQuantityUpdate(product.id, newQuantity);
   });
+  const handleOption = useCallback((id, value) => {
+    handleOptionUpdate(product.id, id, value);
+  });
+
+  const optionsArr = product.options;
 
   return (
     <InlineStack>
@@ -409,20 +502,54 @@ function ProductListRow({ product, handleQuantityUpdate }) {
         borderRadius="200"
         width="100%"
       >
-        <InlineStack align="space-between">
-          <InlineStack blockAlign="center" wrap={false} gap={300}>
-            <Thumbnail source={product.images[0]?.originalSrc || ImageIcon} />
-            <Text>{product.title}</Text>
+        <BlockStack gap={300}>
+          <InlineStack align="space-between">
+            <InlineStack blockAlign="center" wrap={false} gap={300}>
+              <Thumbnail source={product.images[0]?.originalSrc || ImageIcon} />
+              <Text>{product.title}</Text>
+            </InlineStack>
+            <InlineStack blockAlign="center" wrap={false} gap={300}>
+              <TextField
+                type="integer"
+                min={1}
+                value={quantity}
+                onChange={handleQuantity}
+              />
+            </InlineStack>
           </InlineStack>
-          <InlineStack blockAlign="center" wrap={false} gap={300}>
-            <TextField
-              type="integer"
-              min={1}
-              value={quantity}
-              onChange={handleQuantity}
-            />
-          </InlineStack>
-        </InlineStack>
+          <BlockStack gap={200}>
+            {optionsArr.map(({ id, values, name, disabledValues }) => {
+              {
+                return values.length > 1 ? (
+                  <BlockStack gap={100} key={id}>
+                    <Text>{name}</Text>
+                    <InlineStack gap={200}>
+                      {values.map((value, index, array) => {
+                        const isDisabled = disabledValues?.includes(value);
+                        const disableHandler =
+                          disabledValues?.length + 1 === array.length &&
+                          !disabledValues?.includes(value);
+
+                        return (
+                          <Button
+                            onClick={() =>
+                              !disableHandler && handleOption(id, value)
+                            }
+                            icon={isDisabled ? undefined : CheckIcon}
+                            key={value}
+                            variant={isDisabled ? "secondary" : "primary"}
+                          >
+                            {value}
+                          </Button>
+                        );
+                      })}
+                    </InlineStack>
+                  </BlockStack>
+                ) : null;
+              }
+            })}
+          </BlockStack>
+        </BlockStack>
       </Box>
     </InlineStack>
   );
