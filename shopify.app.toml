@@ -3,7 +3,7 @@
 client_id = "6e6e6d0940281f0898f8edbc0ee10fcb"
 name = "bundles-app"
 handle = "easy-bundles-app"
-application_url = "https://13d7-116-58-41-131.ngrok-free.app"
+application_url = "https://8607-116-58-41-131.ngrok-free.app"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "write_cart_transforms,write_products"
 
 [auth]
 redirect_urls = [
-  "https://13d7-116-58-41-131.ngrok-free.app/auth/callback",
-  "https://13d7-116-58-41-131.ngrok-free.app/auth/shopify/callback",
-  "https://13d7-116-58-41-131.ngrok-free.app/api/auth/callback"
+  "https://8607-116-58-41-131.ngrok-free.app/auth/callback",
+  "https://8607-116-58-41-131.ngrok-free.app/auth/shopify/callback",
+  "https://8607-116-58-41-131.ngrok-free.app/api/auth/callback"
 ]
 
 [webhooks]

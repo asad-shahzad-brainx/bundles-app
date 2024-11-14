@@ -21,6 +21,10 @@ import { ImageIcon, CheckIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { json } from "@remix-run/node";
 import { useActionData, useSubmit } from "@remix-run/react";
+import isEqual from "lodash.isequal";
+
+const cartesian = (...arrays) =>
+  arrays.reduce((a, b) => a.flatMap((d) => b.map((e) => [d, e].flat())));
 
 export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
@@ -72,11 +76,13 @@ export async function action({ request }) {
     });
   });
 
-  const bundleComponentVariants = bundleComponents.map(({ variants }) => {
-    return variants.map((variant) => variant.id);
-  });
+  const bundleComponentVariants = bundleComponents.map(
+    ({ selectedVariants }) => {
+      return selectedVariants.map((variant) => variant.id);
+    },
+  );
 
-  return json({ customBundleOptions, bundleComponentVariants });
+  // return json({ customBundleOptions, bundleComponentVariants });
 
   const totalVariants = customBundleOptions.reduce((acc, curr) => {
     return acc * curr.values.length;
@@ -102,9 +108,6 @@ export async function action({ request }) {
   const bundleComponentsQuantities = bundleComponents.map((component) =>
     component.bundleQuantity.toString(),
   );
-
-  const cartesian = (...arrays) =>
-    arrays.reduce((a, b) => a.flatMap((d) => b.map((e) => [d, e].flat())));
 
   function generateCombinations(items) {
     const arrays = items.map((item) =>
@@ -220,6 +223,15 @@ export async function action({ request }) {
       variants(first: 100) {
         nodes {
           id
+          metafields(first: 3, namespace: "custom") {
+            edges {
+              node {
+                namespace
+                key
+                value
+              }
+            }
+          }
         }
       }
     }
@@ -244,9 +256,22 @@ export async function action({ request }) {
 
   const createBundleJSON = await createBundle.json();
   const bundleProduct = createBundleJSON.data.productSet.product;
-  const createdBundleVariants = bundleProduct.variants;
+  const createdBundleVariants = bundleProduct.variants.nodes;
 
-  return json({ createBundleJSON });
+  const componentParent = createdBundleVariants.map((bundleVariant) => {
+    const metafields = {
+      id: bundleProduct.id,
+    };
+    bundleVariant.metafields.edges.forEach((metafield) => {
+      const key = metafield.node.key;
+      const value = JSON.parse(metafield.node.value);
+      metafields[key] = { value };
+    });
+
+    return metafields;
+  });
+
+  return json({ createBundleJSON, componentParent });
 }
 
 export default function NewBundle() {
@@ -254,7 +279,6 @@ export default function NewBundle() {
   const [title, setTitle] = useState("");
   const [products, setProducts] = useState([]);
   const [errors, setErrors] = useState({});
-  const [productOptions, setProductOptions] = useState();
 
   console.log("products", products);
   const submit = useSubmit();
@@ -364,11 +388,34 @@ export default function NewBundle() {
         };
       });
 
-      const updatedVariants = variants.map((variant) => {});
+      // const optionsArr = updatedOptions.map((option) => option.selectedValues);
+      const optionsArr = updatedOptions.map((option) =>
+        option.selectedValues.map((value) =>
+          Array.isArray(value) ? value : [value],
+        ),
+      );
+      const optionCombinations = cartesian(...optionsArr);
+      // console.log(product.title, optionCombinations);
+
+      const updatedVariants = variants.filter((variant) => {
+        const variantOptions = variant.selectedOptions.map(
+          (option) => option.value,
+        );
+        let isSelected = false;
+        for (let i = 0; i < optionCombinations.length; i++) {
+          if (isEqual(optionCombinations[i], variantOptions)) {
+            isSelected = true;
+            break;
+          }
+        }
+        // console.log(variant.title, variantOptions, optionCombinations);
+        return isSelected;
+      });
 
       return {
         ...product,
         options: updatedOptions,
+        selectedVariants: updatedVariants,
       };
     });
 
