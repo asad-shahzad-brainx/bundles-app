@@ -156,7 +156,6 @@ export async function action({ request }) {
             }
           ],
           requiresComponents: true,
-          inventoryPolicy: "CONTINUE",
           price: products.reduce((total, product) => 
             total + parseFloat(product.selectedVariants[0].price), 0),
           compareAtPrice: products.reduce((total, product) => 
@@ -243,7 +242,6 @@ export async function action({ request }) {
         return {
           optionValues: optionCombinations[index],
           requiresComponents: true,
-          inventoryPolicy: "CONTINUE",
           price: combinedPrice,
           compareAtPrice: combinedCompareAtPrice,
           metafields: [
