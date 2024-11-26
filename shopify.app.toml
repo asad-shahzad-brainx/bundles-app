@@ -3,12 +3,12 @@
 client_id = "6e6e6d0940281f0898f8edbc0ee10fcb"
 name = "bundles-app"
 handle = "easy-bundles-app"
-application_url = "https://8607-116-58-41-131.ngrok-free.app"
+application_url = "https://4e64-39-45-172-98.ngrok-free.app"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-dev_store_url = "asads-devstore.myshopify.com"
+dev_store_url = "luqman-dev.myshopify.com"
 include_config_on_deploy = true
 
 [access_scopes]
@@ -17,17 +17,13 @@ scopes = "write_cart_transforms,write_products"
 
 [auth]
 redirect_urls = [
-  "https://8607-116-58-41-131.ngrok-free.app/auth/callback",
-  "https://8607-116-58-41-131.ngrok-free.app/auth/shopify/callback",
-  "https://8607-116-58-41-131.ngrok-free.app/api/auth/callback"
+  "https://4e64-39-45-172-98.ngrok-free.app/auth/callback",
+  "https://4e64-39-45-172-98.ngrok-free.app/auth/shopify/callback",
+  "https://4e64-39-45-172-98.ngrok-free.app/api/auth/callback"
 ]
 
 [webhooks]
 api_version = "2024-10"
-
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
 
 [pos]
 embedded = false

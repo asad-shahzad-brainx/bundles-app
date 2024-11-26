@@ -1,0 +1,4 @@
+{
+  "name": "my-product-config-extension",
+  "welcome": "Welcome to the {{target}} extension!"
+}

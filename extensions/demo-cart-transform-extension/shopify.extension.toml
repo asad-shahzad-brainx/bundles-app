@@ -2,7 +2,7 @@ api_version = "2024-10"
 
 [[extensions]]
 name = "t:name"
-handle = "demo-cart-transform-extension-rs"
+handle = "demo-cart-transform-extension"
 type = "function"
 
 description = "t:description"
@@ -13,9 +13,8 @@ description = "t:description"
   export = "run"
 
   [extensions.build]
-  command = "cargo wasi build --release"
-  path = "target/wasm32-wasi/release/demo-cart-transform-extension-rs.wasm"
-  watch = [ "src/**/*.rs" ]
+  command = ""
+  path = "dist/function.wasm"
 
   [extensions.ui.paths]
   create = "/"

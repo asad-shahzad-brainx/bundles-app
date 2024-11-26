@@ -7,6 +7,8 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { restResources } from "@shopify/shopify-api/rest/admin/2024-07";
 import prisma from "./db.server";
+import cartTrasformFunction from "./graphql/cartTrasformFunction";
+import cartTransformCreate from "./graphql/cartTransformCreate";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -18,6 +20,15 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
   restResources,
+  hooks: {
+    afterAuth: async ({ admin, session }) => {
+      const cartTrasformFunctionResponse = await admin.graphql(cartTrasformFunction);
+      const cartTrasformFunctionResponseJson = await cartTrasformFunctionResponse.json();
+      const functionId = cartTrasformFunctionResponseJson?.data?.shopifyFunctions?.nodes[0]?.id
+      const fetchCartTransformCreateQuery = cartTransformCreate(functionId);
+      await admin.graphql(fetchCartTransformCreateQuery);
+    },
+  },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
   },

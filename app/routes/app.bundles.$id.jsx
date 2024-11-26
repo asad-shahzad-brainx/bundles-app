@@ -1,6 +1,6 @@
 import { json, redirect } from "@remix-run/node";
 import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { authenticate } from "../shopify.server";
 import {
   Page,
@@ -21,7 +21,7 @@ import {
 import { ImageIcon, DeleteIcon } from "@shopify/polaris-icons";
 import emptyState from "../assets/emptyState/newBundle.svg";
 import { updateChildVariantMetafields } from "../services/updateChildVariantMetafields";
-
+import createFetchBundleProductQuery from "../graphql/fetchBundleProduct";
 
 // Helper to get variants based on selected option values
 const getVariantsForSelectedOptions = (variants, options) => {
@@ -54,15 +54,33 @@ const cartesianProduct = (arrays) => {
   , [[]]);
 };
 
-export async function loader({ request }) {
+export async function loader({ params, request }) {
+  const { id } = params;
   const { admin } = await authenticate.admin(request);
   
+  const fetchBundleProductQuery = createFetchBundleProductQuery(id);
+
+  const productResponse = await admin.graphql(fetchBundleProductQuery);
+  const productJson = await productResponse.json();
+
+  const productId = productJson?.data?.product?.id
+  const productTitle = productJson?.data?.product?.title
+  let bundle = productJson?.data?.product?.bundle?.value
+  if(bundle){
+    const jsonBundle = JSON.parse(bundle)
+    bundle = jsonBundle?.products
+  }
+  let productBundleType = productJson?.data?.product?.bundleType?.value
+  if(productBundleType){
+    const jsonBundleType = JSON.parse(productBundleType)
+    productBundleType = jsonBundleType?.bundleType
+  }
+
   return json({
-    limits: {
-      maxProducts: 30,
-      maxOptions: 3,
-      maxVariants: 100
-    }
+    productId,
+    productTitle,
+    productBundleType,
+    bundle
   });
 }
 
@@ -72,6 +90,7 @@ export async function action({ request }) {
   const title = formData.get("title");
   const products = JSON.parse(formData.get("products"));
   const bundleType = formData.get("bundleType");
+  const updateProductId = formData.get("productId");
 
   // Validate basic requirements
   if (!title) return json({ errors: ["Title is required"] });
@@ -161,12 +180,11 @@ export async function action({ request }) {
         productInput = {
           synchronous: true,
           productSet: {
+            id: updateProductId,
             title: title,
-            status: "DRAFT",
             claimOwnership: {
               bundles: true
             },
-            tags: ["bundle"],
             productOptions: [
               {
                 "position": 1,
@@ -248,12 +266,11 @@ export async function action({ request }) {
       productInput = {
         synchronous: true,
         productSet: {
+          id: updateProductId,
           title: title,
-          status: "DRAFT",
           claimOwnership: {
             bundles: true
           },
-          tags: ["bundle"],
           productOptions: allOptionsWithDetails,
           ...(bundleType === 'customizable' && { templateSuffix: "bundle" }),
           variants: bundleVariants,
@@ -353,26 +370,29 @@ export async function action({ request }) {
   } catch (error) {
     console.error("Bundle creation error:", error);
     return json({
-      errors: ["Failed to create bundle. Please try again."]
+      errors: ["Failed to update bundle. Please try again."]
     });
   }
 }
 
 export default function BundleNew() {
-  const { limits } = useLoaderData();
+  const { productId, productTitle, productBundleType, bundle } = useLoaderData();
   const actionData = useActionData();
-  const [title, setTitle] = useState("");
-  const [products, setProducts] = useState([]);
-  const [bundleType, setBundleType] = useState('fixed');
+  const [title, setTitle] = useState(productTitle);
+  const [products, setProducts] = useState(bundle);
+  const [bundleType, setBundleType] = useState([productBundleType]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaveEnabled, setIsSaveEnabled] = useState(false);
+  const hasMounted = useRef(false);
+  
   const submit = useSubmit();
-
   const handleProductPicker = async () => {
     const picked = await window.shopify.resourcePicker({
       type: "product",
       multiple: true,
       selectionIds: products.map((p) => ({ id: p.id })),
       filter: {
+        variants: false,
         draft: false,
         archived: false,
       },
@@ -463,17 +483,20 @@ export default function BundleNew() {
 
     setIsLoading(true);
     const formData = new FormData();
+    formData.set("productId", productId);
     formData.set("title", title);
     formData.set("products", JSON.stringify(products));
-    formData.set("bundleType", bundleType);
+    formData.set("bundleType", bundleType[0]);
     submit(formData, { method: "POST" });
-  }, [title, products, bundleType, submit]);
+  }, [productId, title, products, bundleType, submit]);
 
   const handleDeleteProduct = useCallback((productId) => {
     setProducts(currentProducts => 
       currentProducts.filter(product => product.id !== productId)
     );
   }, []);
+
+  const handleChange = useCallback((value) => setBundleType(value), []);
 
   const errorBanner = actionData?.errors?.length > 0 ? (
     <Layout.Section>
@@ -492,7 +515,22 @@ export default function BundleNew() {
     </Layout.Section>
   ) : null;
 
+
   useEffect(() => {
+    // Compare products, bundleType, and title with their initial values
+    const productsChanged = JSON.stringify(products) !== JSON.stringify(bundle);
+    const bundleTypeChanged = JSON.stringify(bundleType) !== JSON.stringify([productBundleType]); 
+    const titleChanged = JSON.stringify(title.trim()) !== JSON.stringify(productTitle.trim());
+
+    if (productsChanged || bundleTypeChanged || titleChanged) {
+      setIsSaveEnabled(true);
+    } else {
+      setIsSaveEnabled(false);
+    }
+  }, [products, bundleType, title, bundle, productTitle, productBundleType ]);
+
+  useEffect(() => {
+    if (!actionData) return;
     if (actionData) {
       setIsLoading(false);
     }
@@ -500,31 +538,22 @@ export default function BundleNew() {
       window.open(`shopify://admin/products/${actionData.productId}`, '_self');
     }
   }, [actionData]);
-
+  
   const handleRedirect = useCallback(() => {
     return window.open('/app', '_self');
   }, []);
-  
+
   return (
     <Page
-      title="Create bundle"
+      title="Edit bundle"
       backAction={{
         content: "Bundles",
         onAction: handleRedirect,
       }}
-      primaryAction={{
-        content: "Save",
-        onAction: handleSubmit,
-        disabled: !title || products.length === 0,
-        loading: isLoading,
-      }}
       secondaryActions={[
         {
-          content: "Discard",
-          onAction: () => {
-            setTitle("");
-            setProducts([]);
-          },
+          content: "View Bundle Product",
+          onAction: () => window.open(`shopify://admin/products/${productId.split("/").pop()}`, '_self'),
         },
       ]}
     >
@@ -549,15 +578,15 @@ export default function BundleNew() {
                   choices={[
                     {
                       label: 'Fixed Bundle',
-                      value: 'fixed',
+                      value: "fixed",
                     },
                     {
                       label: 'Customizable Bundle',
-                      value: 'customizable',
+                      value: "customizable",
                     },
                   ]}
-                  selected={[bundleType]}
-                  onChange={value => setBundleType(value[0])}
+                  selected={bundleType}
+                  onChange={handleChange}
                 />
               </BlockStack>
             </Card>
@@ -765,7 +794,7 @@ export default function BundleNew() {
               variant="primary"
               tone="success"
               onClick={handleSubmit}
-              disabled={!title || products.length === 0}
+              disabled={!title || !isSaveEnabled || products.length === 0}
               loading={isLoading}
               fullWidth
             >

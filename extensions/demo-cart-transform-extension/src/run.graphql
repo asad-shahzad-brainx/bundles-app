@@ -3,10 +3,15 @@ query Input {
     lines {
       id
       quantity
+      attribute(key: "_BundlePrice"){
+        key
+        value
+      }
       merchandise {
         __typename
         ... on ProductVariant {
           id
+          title
           component_parents: metafield(
             namespace: "custom"
             key: "component_parents"
@@ -25,11 +30,13 @@ query Input {
           ) {
             value
           }
-          price_adjustment: metafield(
-            namespace: "custom"
-            key: "price_adjustment"
-          ) {
-            value
+          product {
+            bundle_type: metafield(
+              namespace: "$app:bundleType"
+              key: "bundleType-configuration"
+            ) {
+              value
+            }
           }
         }
       }
